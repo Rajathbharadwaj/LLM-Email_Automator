@@ -8,9 +8,37 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import Runnable
-
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from langchain_core.prompts import ChatPromptTemplate
+import pandas as pd
 
 import streamlit as st
+
+# Read the CSV
+df = pd.read_csv("Fintech BB Reachout list.csv")
+company_name = tuple(df['Company name']) + tuple("A")
+
+# Email configuration
+smtp_server = 'smtp.gmail.com'
+smtp_port = 587
+smtp_user = 'your_email@gmail.com'
+smtp_password = 'your_password'
+
+# Function to send an email
+def send_email(to_address, subject, body):
+    msg = MIMEMultipart()
+    msg['From'] = smtp_user
+    msg['To'] = to_address
+    msg['Subject'] = subject
+    
+    msg.attach(MIMEText(body, 'plain'))
+    
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
 
 st.set_page_config(page_title="Email Automator", page_icon="🦜")
 st.title("Automate Email")
@@ -37,9 +65,15 @@ for idx, msg in enumerate(msgs.messages):
                 st.write(step[0].log)
                 st.write(step[1])
         st.write(msg.content)
+base_company =  st.selectbox("Select the product you want to pitch", ("BrokeBrothers", "PPI", "More"))
+target_company = st.selectbox("Which company you want to pitch to? Select ALL for all or select any from the dropbox", company_name)
+prompt_template = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant who will help me pitch a company's product to another company. You have access to the internet and all the revelant information. You have to fintune in your pitch and identify how the company's product will help the other company."),
+    ("user", "Here's the company product {base_company} and here's the company you should pitch to {target_company}")
+])
 
-if prompt := st.chat_input(placeholder="What do you want generate?"):
-    st.chat_message("user").write(prompt)
+if prompt_template:
+    st.chat_message("user").write(prompt_template)
 
     if not openai_api_key:
         st.info("Please add your OpenAI API key to continue.")
@@ -60,6 +94,11 @@ if prompt := st.chat_input(placeholder="What do you want generate?"):
         st_cb = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
         cfg = RunnableConfig()
         cfg["callbacks"] = [st_cb]
-        response = executor.invoke(prompt, cfg)
+        response = executor.invoke({"base_company": base_company, "target_company": target_company}, cfg)
         st.write(response["output"])
         st.session_state.steps[str(len(msgs.messages) - 1)] = response["intermediate_steps"]
+        if response["output"]:
+            send_email = st.button("Send Email?")
+            # if send_email:
+            #     subject = executor.invoke("Give me a subject for this email", cfg)["output"].capitalize()
+
