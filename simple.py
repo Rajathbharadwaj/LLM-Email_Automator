@@ -1,14 +1,14 @@
-from langchain.agents import ConversationalChatAgent, AgentExecutor
-from langchain.memory import ConversationBufferMemory
-from langchain_community.callbacks import StreamlitCallbackHandler
-from langchain_community.chat_message_histories import StreamlitChatMessageHistory
-from langchain_community.tools import DuckDuckGoSearchRun
-from langchain_core.prompts import SystemMessagePromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableConfig
-from langchain_openai import ChatOpenAI
-from langchain_core.runnables import Runnable
-import smtplib
+# from langchain.agents import ConversationalChatAgent, AgentExecutor
+# from langchain.memory import ConversationBufferMemory
+# from langchain_community.callbacks import StreamlitCallbackHandler
+# from langchain_community.chat_message_histories import StreamlitChatMessageHistory
+# from langchain_community.tools import DuckDuckGoSearchRun
+# from langchain_core.prompts import SystemMessagePromptTemplate
+# from langchain_core.output_parsers import StrOutputParser
+# from langchain_core.runnables import RunnableConfig
+# from langchain_openai import ChatOpenAI
+# from langchain_core.runnables import Runnable
+from send_email import send_email
 from duckduckgo_search import DDGS
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -18,6 +18,7 @@ from langchain_openai import AzureOpenAI
 import streamlit as st
 import os
 
+
 os.environ["OPENAI_API_VERSION"] = "2024-05-01-preview"
 os.environ["AZURE_OPENAI_ENDPOINT"] = "https://spenseazureopenai.openai.azure.com/"
 os.environ["AZURE_OPENAI_API_KEY"] = "08e642c7a2314ddeb1380ccdf1ed3904"
@@ -26,6 +27,7 @@ os.environ["AZURE_OPENAI_API_KEY"] = "08e642c7a2314ddeb1380ccdf1ed3904"
 # Read the CSV
 df = pd.read_csv("Fintech BB Reachout list.csv")
 company_name = tuple(df['Company name']) + tuple("A")
+
 
 # openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 
@@ -100,3 +102,17 @@ if run_code:
                            Here's some info on OfficialBrokerBrothers Channel\n {results_base}\n To help you write a better email. Also here's a reference email you can use to maintain the same semantics and not change too much from this.\n {email_example}")
     # skills = chain.invoke({"base_company": base_company+results_base[0]['body'], "target_company": results_target[0]['body']})
     st.write(skills)
+
+    prompt2 = ChatPromptTemplate.from_messages([
+    ("system", "I will give you an email, your job is to give a consolidated subject for that email"),
+    ("user", "Here's the email\n {skills}")
+])
+    chain2 = llm | prompt2 | output_parser
+    subject = chain2.invoke({"skills":skills})
+    send_email_button = st.button("Send the Email?")
+    df['Domain'] = df['Work email'].apply(lambda x: x.split('@')[1])
+    jupiter_emails = df[df['Domain'] == 'jupiter.money']['Work email'].tolist()
+    if send_email_button:
+        send_email(jupiter_emails, subject=subject, body=skills)
+        st.success("Sent!")
+
